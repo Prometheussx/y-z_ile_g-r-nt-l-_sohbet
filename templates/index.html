@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Görüntü Sesli Soru Uygulaması</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f7f9fc;
+            color: #333;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        
+        .camera-container {
+            position: relative;
+            max-width: 640px;
+            margin: 0 auto;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        #camera {
+            width: 100%;
+            border-radius: 8px;
+            display: block;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #2980b9;
+        }
+        
+        button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            background: #ecf0f1;
+            text-align: center;
+            position: relative;
+        }
+        
+        .status.active {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .status.passive {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        
+        .status.speaking {
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        .status.processing {
+            background: #fff8e1;
+            color: #f57f17;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        .status.active .status-indicator {
+            background-color: #2ecc71;
+        }
+        
+        .status.passive .status-indicator {
+            background-color: #f39c12;
+        }
+        
+        .status.speaking .status-indicator {
+            background-color: #e74c3c;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .status.processing .status-indicator {
+            background-color: #f1c40f;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+        
+        .conversation {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            background: white;
+        }
+        
+        .query {
+            background: #e8f5f9;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        
+        .answer {
+            background: #f0f4c3;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        /* Spinner for loading states */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .error-message {
+            background: #ffebee;
+            color: #c62828;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            text-align: center;
+        }
+        
+        .camera-permissions-needed {
+            text-align: center;
+            padding: 20px;
+            background: #fff3e0;
+            border-radius: 8px;
+            margin: 20px auto;
+            max-width: 500px;
+        }
+        
+        .faces-list {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #eef2f7;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .faces-list h3 {
+            margin-top: 0;
+            color: #34495e;
+        }
+        
+        .face-item {
+            display: inline-block;
+            margin: 5px;
+            padding: 5px 10px;
+            background: #3498db;
+            color: white;
+            border-radius: 15px;
+            font-size: 14px;
+        }
+        
+        #refresh-faces-button {
+            margin-top: 10px;
+            background-color: #2ecc71;
+        }
+        
+        #refresh-faces-button:hover {
+            background-color: #27ae60;
+        }
+        
+        #processed-camera {
+            width: 100%;
+            border-radius: 8px;
+            display: none;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Görüntü Sesli Soru Uygulaması</h1>
+    
+    <div class="camera-container">
+        <video id="camera" autoplay playsinline></video>
+        <img id="processed-camera" alt="Yüz tanıma işleniyor...">
+    </div>
+    
+    <div id="camera-permissions-needed" class="camera-permissions-needed hidden">
+        <p>Bu uygulama çalışabilmek için kamera erişimine ihtiyaç duyuyor.</p>
+        <button id="request-camera">Kamera İzni Ver</button>
+    </div>
+    
+    <div class="controls">
+        <button id="analyze-button">Görüntüyü Analiz Et</button>
+        <button id="toggle-listening">Dinleme Modunu Değiştir</button>
+        <button id="toggle-face-recognition">Yüz Tanıma Göster/Gizle</button>
+    </div>
+    
+    <div class="faces-list" id="faces-list">
+        <h3>Tanınan Yüzler</h3>
+        <div id="faces-container">
+            <!-- Tanınan yüzler burada listelenecek -->
+            <p>Henüz tanınan yüz yok</p>
+        </div>
+        <button id="refresh-faces-button">Yüz Veritabanını Yenile</button>
+    </div>
+    
+    <div class="status passive" id="status">
+        <span class="status-indicator"></span>
+        Pasif dinleme modu - ses algılandığında aktifleşir
+    </div>
+    
+    <div class="conversation" id="conversation">
+        <!-- Conversation history will be added here -->
+    </div>
+    
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+    <script>
+        // DOM elements
+        const cameraElement = document.getElementById('camera');
+        const processedCameraElement = document.getElementById('processed-camera');
+        const analyzeButton = document.getElementById('analyze-button');
+        const toggleListeningButton = document.getElementById('toggle-listening');
+        const toggleFaceRecognitionButton = document.getElementById('toggle-face-recognition');
+        const statusElement = document.getElementById('status');
+        const conversationElement = document.getElementById('conversation');
+        const cameraPermissionsEl = document.getElementById('camera-permissions-needed');
+        const requestCameraButton = document.getElementById('request-camera');
+        const facesContainer = document.getElementById('faces-container');
+        const refreshFacesButton = document.getElementById('refresh-faces-button');
+        
+        // Global variables
+        let isListening = false; 
+        let isPassiveListening = true; // Start assuming passive listening is on
+        let isSpeaking = false;
+        let stream = null;
+        let videoTrack = null;
+        let socket = null;
+        let audioElement = null;
+        let frameInterval = null;
+        let processedFrameInterval = null;
+        let connectionAttempts = 0;
+        const MAX_CONNECTION_ATTEMPTS = 3;
+        let showFaceRecognition = false;
+        
+        // Initialize the app
+        async function init() {
+            try {
+                // Connect to SocketIO server
+                connectSocket();
+                
+                // Setup button event listeners
+                analyzeButton.addEventListener('click', analyzeCurrentFrame);
+                toggleListeningButton.addEventListener('click', toggleListening);
+                requestCameraButton.addEventListener('click', requestCameraAccess);
+                refreshFacesButton.addEventListener('click', refreshFaceDatabase);
+                toggleFaceRecognitionButton.addEventListener('click', toggleFaceRecognition);
+                
+                // Setup polling for audio queue
+                setInterval(checkAudioQueue, 1000);
+                
+                // Poll for status updates
+                setInterval(updateListeningStatus, 2000);
+                
+                // Load recognized faces
+                loadRecognizedFaces();
+                
+            } catch (error) {
+                console.error('Initialization error:', error);
+                updateStatus('Hata: Uygulama başlatılamadı. Lütfen konsolu kontrol edin.', 'error');
+            }
+        }
+        
+        // Toggle face recognition display
+        function toggleFaceRecognition() {
+            showFaceRecognition = !showFaceRecognition;
+            
+            if (showFaceRecognition) {
+                // Show processed camera view with face recognition
+                processedCameraElement.style.display = 'block';
+                // Start requesting processed frames
+                if (processedFrameInterval) {
+                    clearInterval(processedFrameInterval);
+                }
+                processedFrameInterval = setInterval(requestProcessedFrame, 200);
+                toggleFaceRecognitionButton.textContent = 'Yüz Tanıma Gizle';
+            } else {
+                // Hide processed camera view
+                processedCameraElement.style.display = 'none';
+                // Stop requesting processed frames
+                if (processedFrameInterval) {
+                    clearInterval(processedFrameInterval);
+                    processedFrameInterval = null;
+                }
+                toggleFaceRecognitionButton.textContent = 'Yüz Tanıma Göster';
+            }
+        }
+        
+        // Request processed frame with face recognition
+        function requestProcessedFrame() {
+            if (socket && socket.connected && showFaceRecognition) {
+                socket.emit('request_processed_frame', {});
+            }
+        }
+        
+        // Refresh face database
+        async function refreshFaceDatabase() {
+            try {
+                refreshFacesButton.disabled = true;
+                refreshFacesButton.innerHTML = '<span class="spinner"></span> Yenileniyor...';
+                
+                const response = await fetch('/refresh_face_database', {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    updateFacesList(data.faces);
+                    alert('Yüz veritabanı başarıyla yenilendi!');
+                } else {
+                    alert(`Hata: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error refreshing face database:', error);
+                alert(`Hata: ${error.message}`);
+            } finally {
+                refreshFacesButton.disabled = false;
+                refreshFacesButton.textContent = 'Yüz Veritabanını Yenile';
+            }
+        }
+        
+        // Load recognized faces
+        async function loadRecognizedFaces() {
+            try {
+                const response = await fetch('/get_faces');
+                if (response.ok) {
+                    const data = await response.json();
+                    updateFacesList(data.faces);
+                }
+            } catch (error) {
+                console.error('Error loading faces:', error);
+            }
+        }
+        
+        // Update the faces list display
+        function updateFacesList(faces) {
+            if (!faces || faces.length === 0) {
+                facesContainer.innerHTML = '<p>Henüz tanınan yüz yok</p>';
+                return;
+            }
+            
+            facesContainer.innerHTML = '';
+            faces.forEach(face => {
+                const faceEl = document.createElement('span');
+                faceEl.className = 'face-item';
+                faceEl.textContent = face;
+                facesContainer.appendChild(faceEl);
+            });
+        }
+        
+        // Update the listening status from server
+        async function updateListeningStatus() {
+            try {
+                if (!socket || !socket.connected) {
+                    return; // Don't check if not connected
+                }
+                
+                const response = await fetch('/listening_status');
+                if (!response.ok) {
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                // Update our local state
+                isListening = data.is_listening;
+                isPassiveListening = data.is_passive_listening;
+                isSpeaking = data.is_speaking;
+                
+                                // Update UI based on current status
+                if (isSpeaking) {
+                    updateStatus('Yanıt okunuyor...', 'speaking');
+                } else if (isListening) {
+                    updateStatus('Aktif dinleme modu - konuşmanızı bekliyorum', 'active');
+                } else if (isPassiveListening) {
+                    updateStatus('Pasif dinleme modu - ses algılandığında aktifleşir', 'passive');
+                } else {
+                    updateStatus('Dinleme kapalı', 'inactive');
+                }
+                
+            } catch (error) {
+                // Silent error handling
+            }
+        }
+        
+        function connectSocket() {
+            // Connect to Socket.IO server with automatic reconnection
+            socket = io({
+                reconnectionAttempts: MAX_CONNECTION_ATTEMPTS,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                timeout: 20000
+            });
+            
+            // Setup event listeners for SocketIO
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                updateStatus('Bağlantı kuruldu. Pasif dinleme modunda.', 'passive');
+                connectionAttempts = 0;
+                updateListeningStatus(); // Get initial status
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                connectionAttempts++;
+                if (connectionAttempts >= MAX_CONNECTION_ATTEMPTS) {
+                    updateStatus('Sunucu ile bağlantı kurulamadı. Sayfayı yenileyin.', 'error');
+                } else {
+                    updateStatus(`Sunucu ile bağlantı kurulamadı, yeniden deneniyor (${connectionAttempts}/${MAX_CONNECTION_ATTEMPTS})...`, 'error');
+                }
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+                updateStatus('Sunucu ile bağlantı kesildi', 'error');
+            });
+            
+            socket.on('listening_status', (data) => {
+                isListening = data.is_listening;
+                
+                if (data.reason === 'processing') {
+                    updateStatus('İşleniyor...', 'processing');
+                    isSpeaking = true;
+                } else if (data.reason === 'tts_complete') {
+                    updateStatus('Aktif dinleme modu - konuşmanızı bekliyorum', 'active');
+                    isSpeaking = false;
+                } else if (data.reason === 'activated') {
+                    updateStatus('Aktif dinleme modu - konuşmanızı bekliyorum', 'active');
+                    isSpeaking = false;
+                } else if (data.reason === 'deactivated') {
+                    updateStatus('Pasif dinleme modu - ses algılandığında aktifleşir', 'passive');
+                    isSpeaking = false;
+                } else if (data.reason === 'passive') {
+                    updateStatus('Pasif dinleme modu - ses algılandığında aktifleşir', 'passive');
+                    isSpeaking = false;
+                } else if (data.reason === 'inactive') {
+                    updateStatus('Dinleme kapalı', 'inactive');
+                    isSpeaking = false;
+                } else if (data.reason === 'speaking') {
+                    updateStatus('Yanıt okunuyor...', 'speaking');
+                    isSpeaking = true;
+                }
+            });
+            
+            socket.on('request_camera', async () => {
+                console.log('Server requested camera access');
+                await requestCameraAccess();
+            });
+            
+            // Handle processed frames with face recognition
+            socket.on('processed_frame', (data) => {
+                if (showFaceRecognition && data.image) {
+                    processedCameraElement.src = data.image;
+                }
+            });
+        }
+        
+        // Request camera access
+        async function requestCameraAccess() {
+            try {
+                // Hide the camera permissions element
+                cameraPermissionsEl.classList.add('hidden');
+                
+                await setupCamera();
+                return true;
+                
+            } catch (error) {
+                console.error('Camera access error:', error);
+                showCameraPermissionsNeeded();
+                return false;
+            }
+        }
+        
+        // Show camera permissions needed UI
+        function showCameraPermissionsNeeded() {
+            cameraPermissionsEl.classList.remove('hidden');
+            updateStatus('Kamera izni gerekiyor', 'error');
+        }
+        
+        // Setup camera access
+        async function setupCamera() {
+            try {
+                if (stream) {
+                    // Stop any existing stream
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                
+                // Request camera access
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: { ideal: 'environment' } // Use back camera on mobile devices if available
+                    },
+                    audio: false
+                });
+                
+                // Connect stream to video element
+                cameraElement.srcObject = stream;
+                
+                // Get video track for frame capture
+                videoTrack = stream.getVideoTracks()[0];
+                
+                // Start sending frames to the server
+                startSendingFrames();
+                
+                return true;
+                
+            } catch (error) {
+                console.error('Camera setup error:', error);
+                
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    updateStatus('Kamera erişimine izin verilmedi', 'error');
+                    showCameraPermissionsNeeded();
+                } else {
+                    updateStatus('Hata: Kamera erişimi sağlanamadı', 'error');
+                }
+                
+                return false;
+            }
+        }
+        
+        // Start sending frames to server
+        function startSendingFrames() {
+            // Clear any existing interval
+            if (frameInterval) {
+                clearInterval(frameInterval);
+            }
+            
+            // Setup canvas for frame capture
+            const canvas = document.createElement('canvas');
+            canvas.width = 640;
+            canvas.height = 480;
+            const ctx = canvas.getContext('2d');
+            
+            // Send frames at regular interval
+            frameInterval = setInterval(() => {
+                if (videoTrack && videoTrack.readyState === 'live' && cameraElement.readyState >= 2) {
+                    try {
+                        // Draw current frame to canvas
+                        ctx.drawImage(cameraElement, 0, 0, canvas.width, canvas.height);
+                        
+                        // Get as base64 image with reduced quality
+                        const imageData = canvas.toDataURL('image/jpeg', 0.6); // Lower quality (0.6) for faster transfer
+                        
+                        // Send to server if connected
+                        if (socket && socket.connected) {
+                            socket.emit('client_frame', { image: imageData });
+                        }
+                    } catch (err) {
+                        console.error('Error sending frame:', err);
+                    }
+                }
+            }, 300); // Send ~3 frames per second (reduced to save bandwidth)
+        }
+        
+        // Stop sending frames
+        function stopSendingFrames() {
+            if (frameInterval) {
+                clearInterval(frameInterval);
+                frameInterval = null;
+            }
+            
+            if (processedFrameInterval) {
+                clearInterval(processedFrameInterval);
+                processedFrameInterval = null;
+            }
+        }
+        
+        // Update status message
+        function updateStatus(message, type) {
+            statusElement.innerHTML = `<span class="status-indicator"></span>${message}`;
+            statusElement.className = 'status ' + (type || '');
+        }
+        
+        // Toggle between passive and active listening
+        async function toggleListening() {
+            try {
+                // Check if connected
+                if (!socket || !socket.connected) {
+                    updateStatus('Sunucuya bağlı değil', 'error');
+                    return;
+                }
+                
+                // Disable button during processing
+                toggleListeningButton.disabled = true;
+                
+                // Send request to server
+                const response = await fetch('/toggle_listening', {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server responded with ${response.status}`);
+                }
+                
+                // Re-enable button
+                toggleListeningButton.disabled = false;
+                
+                // Status will be updated via the socket event or the polling
+                
+            } catch (error) {
+                console.error('Toggle listening error:', error);
+                updateStatus('Hata: Dinleme durumu değiştirilemedi', 'error');
+                toggleListeningButton.disabled = false;
+            }
+        }
+        
+        // Analyze the current frame
+        async function analyzeCurrentFrame() {
+            try {
+                // Check if connected
+                if (!socket || !socket.connected) {
+                    updateStatus('Sunucuya bağlı değil', 'error');
+                    return;
+                }
+                
+                // Disable button during processing
+                analyzeButton.disabled = true;
+                analyzeButton.innerHTML = '<span class="spinner"></span> İşleniyor...';
+                
+                // Update status
+                updateStatus('Görüntü analiz ediliyor...', 'processing');
+                
+                // Send request to server
+                const response = await fetch('/analyze_current_frame', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Server responded with ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Add to conversation
+                addToConversation('Görüntü analizi istendi', data.analysis);
+                
+                // Play audio if available
+                if (data.audio_file) {
+                    playAudio(data.audio_file);
+                }
+                
+            } catch (error) {
+                console.error('Analysis error:', error);
+                updateStatus(`Hata: Analiz başarısız oldu - ${error.message}`, 'error');
+            } finally {
+                // Re-enable button
+                analyzeButton.disabled = false;
+                analyzeButton.textContent = 'Görüntüyü Analiz Et';
+            }
+        }
+        
+        // Check for audio responses from the server
+        async function checkAudioQueue() {
+            try {
+                if (!socket || !socket.connected) {
+                    return; // Don't check if not connected
+                }
+                
+                const response = await fetch('/get_audio_queue');
+                if (!response.ok) {
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                // Handle different response types
+                if (data.type === 'conversation') {
+                    addToConversation(data.query, data.answer);
+                    if (data.audio_file) {
+                        playAudio(data.audio_file);
+                    }
+                } else if (data.type === 'error') {
+                    updateStatus(`Hata: ${data.message}`, 'error');
+                }
+                
+            } catch (error) {
+                // Silently handle errors here, to avoid cluttering the console
+                // on frequent polling errors
+            }
+        }
+        
+        // Add a conversation entry
+        function addToConversation(query, answer) {
+            const queryElement = document.createElement('div');
+            queryElement.className = 'query';
+            queryElement.textContent = query;
+            
+            const answerElement = document.createElement('div');
+            answerElement.className = 'answer';
+            answerElement.textContent = answer;
+            
+            conversationElement.appendChild(queryElement);
+            conversationElement.appendChild(answerElement);
+            
+            // Scroll to bottom
+            conversationElement.scrollTop = conversationElement.scrollHeight;
+        }
+        
+        // Play audio and notify server when complete
+        function playAudio(audioFile) {
+            // Stop any existing audio
+            if (audioElement) {
+                audioElement.pause();
+                audioElement.removeEventListener('ended', audioEndedHandler);
+            }
+            
+            // Create new audio element
+            audioElement = new Audio(audioFile);
+            
+            // Set up event listener for when audio finishes
+            audioElement.addEventListener('ended', audioEndedHandler);
+            
+            // Start playing
+            audioElement.play().catch(error => {
+                console.error('Audio playback error:', error);
+                // Notify server anyway to resume listening
+                if (socket && socket.connected) {
+                    socket.emit('audio_completed', {});
+                }
+            });
+            
+            function audioEndedHandler() {
+                // Notify server that audio playback is complete
+                if (socket && socket.connected) {
+                    socket.emit('audio_completed', {});
+                }
+            }
+        }
+        
+        // Clean up resources before unloading
+        window.addEventListener('beforeunload', async () => {
+            try {
+                // Stop sending frames
+                stopSendingFrames();
+                
+                // Stop video stream
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                
+                // Notify server
+                if (socket && socket.connected) {
+                    await fetch('/cleanup', {
+                        method: 'POST'
+                    });
+                }
+                
+            } catch (error) {
+                console.error('Cleanup error:', error);
+            }
+        });
+        
+        // Start the app
+        init();
+    </script>
+</body>
+</html>
